@@ -1,0 +1,37 @@
+{
+  "Dataset_Info": {
+    "Total_Records": 4201,
+    "Total_Features": 33,
+    "Diseases_Count": 399,
+    "Date_Range": "Static dataset",
+    "Memory_Usage_MB": 6.416953086853027
+  },
+  "Data_Quality": {
+    "Missing_Values": "553",
+    "Duplicate_Rows": "0",
+    "Complete_Records": 3666,
+    "Data_Types": {
+      "object": "16",
+      "int64": "6",
+      "float64": "2",
+      "category": "1"
+    }
+  },
+  "Key_Statistics": {
+    "Age_Range": "2 - 95",
+    "Average_Age": 41.04570340395144,
+    "BMI_Range": "14.7 - 42.2",
+    "Average_BMI": 25.398000476077126,
+    "Gender_Distribution": {
+      "Male": "2152",
+      "Female": "2049"
+    },
+    "Top_5_Diseases": {
+      "Migraine": "52",
+      "Pneumonia": "50",
+      "Psoriasis": "49",
+      "Tuberculosis": "44",
+      "Hepatitis B": "44"
+    }
+  }
+}
