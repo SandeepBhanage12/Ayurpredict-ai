@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Model Training Script - Extract and Train from Notebook Data
-============================================================
+Model Training Script - Train Arogya AI Disease Prediction Model
+================================================================
 
-This script extracts the model training logic from the AyurCore notebook
+This script loads training data from enhanced_ayurvedic_treatment_dataset.csv
 and creates a complete trained model with all necessary components.
+The model training logic is based on the methodology from AyurCore.ipynb.
 """
 
-import json
 import pandas as pd
 import numpy as np
 import joblib
@@ -17,27 +17,20 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from imblearn.over_sampling import SMOTE
 
 warnings.filterwarnings('ignore')
 
 def extract_notebook_code():
     """
-    Extract the training code from the notebook and execute it
+    Load training data and train model
+    Note: This was originally designed to extract from notebook, but now loads directly from CSV
     """
-    print("Extracting training logic from AyurCore.ipynb...")
+    print("Loading training data and initializing model training...")
     
-    # Load notebook
-    with open('AyurCore.ipynb', 'r', encoding='utf-8', errors='ignore') as f:
-        notebook_data = json.load(f)
-    
-    print(f"Loaded notebook with {len(notebook_data['cells'])} cells")
-    
-    # For demonstration, we'll create the training pipeline based on the notebook structure
-    # In real scenario, we'd need the actual dataset
-    
+    # Load and train from CSV directly
     return create_demo_model()
 
 def create_demo_model():
@@ -182,8 +175,16 @@ def train_complete_model(df):
     # 9. Model Training
     # Models aligned with notebook methodology
     models = {
-        'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1),
-        'Logistic Regression': LogisticRegression(random_state=42, max_iter=1000),
+        'Random Forest': RandomForestClassifier(
+            n_estimators=150,  # Increased from 100 (more trees = higher accuracy)
+            max_depth=40,  # Increased from 30 (deeper trees = higher accuracy)
+            min_samples_split=2,  # Keep at minimum (allows more splits)
+            min_samples_leaf=1,  # Keep at minimum (smaller leaves = more detail)
+            max_features=0.8,  # Use 80% of features (was 'sqrt' ~28%) - more features = higher accuracy
+            random_state=42, 
+            n_jobs=-1
+        ),
+        'Logistic Regression': LogisticRegression(random_state=42, max_iter=1000),  # Original
         'SVM': SVC(random_state=42, kernel='rbf', probability=True),
     }
     
@@ -212,7 +213,58 @@ def train_complete_model(df):
     best_model_name = max(trained_models.keys(), key=lambda n: results.get(n, -1))
     best_model = trained_models[best_model_name]
     
-    print(f"\nBest Model: {best_model_name} with accuracy: {results[best_model_name]:.4f}")
+    print(f"\nBest Model: {best_model_name} with test accuracy: {results[best_model_name]:.4f}")
+    
+    # Additional validation: Cross-validation on original training data (before SMOTE)
+    print("\n" + "="*60)
+    print("CROSS-VALIDATION EVALUATION (5-fold)")
+    print("="*60)
+    print("Note: CV is done on original data (before SMOTE) to check generalization...")
+    
+    # Use original split train data for CV (more realistic)
+    X_train_orig = X_train_base.copy()
+    tfidf_train = vectorizer.transform(df.loc[X_train_base.index, 'Symptoms'])
+    tfidf_train_df = pd.DataFrame(
+        tfidf_train.toarray(),
+        index=X_train_base.index,
+        columns=[f'tfidf_{i}' for i in range(tfidf_train.shape[1])]
+    )
+    X_train_combined = pd.concat([X_train_orig, tfidf_train_df], axis=1)
+    X_train_scaled_cv = scaler.transform(X_train_combined)
+    y_train_orig = y_train_base
+    
+    # Cross-validation (5-fold stratified) - use simpler model for CV to avoid memory issues
+    print("Running cross-validation with Logistic Regression (lighter model for CV)...")
+    cv_model = LogisticRegression(random_state=42, max_iter=1000, n_jobs=1)
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    try:
+        cv_scores = cross_val_score(cv_model, X_train_scaled_cv, y_train_orig, cv=cv, scoring='accuracy', n_jobs=1)
+        print(f"CV Mean Accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+        print(f"CV Scores per fold: {[f'{s:.4f}' for s in cv_scores]}")
+        cv_mean = cv_scores.mean()
+    except MemoryError:
+        print("⚠️  CV skipped due to memory constraints. Using test accuracy as primary metric.")
+        cv_mean = None
+    
+    if results[best_model_name] >= 0.99:
+        print("\n⚠️  WARNING: Test accuracy >= 99% may indicate:")
+        print("   - Overfitting (model memorized training patterns)")
+        print("   - Dataset too simple or highly separable")
+        print("   - Possible data leakage (check feature engineering)")
+        if cv_mean is not None:
+            print(f"   - CV accuracy ({cv_mean:.4f}) is more realistic for generalization")
+        else:
+            print("   - Consider running CV separately with a lighter model")
+    
+    # Detailed classification report
+    print("\n" + "="*60)
+    print("DETAILED CLASSIFICATION REPORT (Test Set)")
+    print("="*60)
+    y_pred_test = best_model.predict(X_test_scaled)
+    # Only show classes that appear in test set
+    unique_classes_test = np.unique(np.concatenate([y_test, y_pred_test]))
+    test_class_names = encoders['Disease'].classes_[unique_classes_test]
+    print(classification_report(y_test, y_pred_test, labels=unique_classes_test, target_names=test_class_names, zero_division=0))
     
     # 11. Save Everything
     model_components = {
