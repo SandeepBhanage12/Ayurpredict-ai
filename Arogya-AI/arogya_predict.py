@@ -207,17 +207,32 @@ class ArogyaAI:
         return ', '.join(items[:max_items])
 
     def _compact_phrases(self, text: str, max_items: int = 4) -> str:
-        """Keep unique phrases separated by ';' and cap the count."""
+        """Keep unique phrases separated by ';' and cap the count (case-insensitive dedupe)."""
         if not text:
             return ''
-        phrases: List[str] = []
+        seen_lower: List[str] = []
+        unique_phrases: List[str] = []
         for seg in str(text).split(';'):
-            t = seg.strip()
+            t = seg.strip().strip(',.;')
             if not t or t.lower() == 'nan':
                 continue
-            if t not in phrases:
-                phrases.append(t)
-        return '; '.join(phrases[:max_items])
+            key = t.lower()
+            if key not in seen_lower:
+                seen_lower.append(key)
+                unique_phrases.append(t)
+        # If there's still only one long item, also try splitting by comma to reduce duplicates
+        if len(unique_phrases) <= 1 and ',' in text:
+            seen_lower = []
+            unique_phrases = []
+            for seg in str(text).replace(';', ',').split(','):
+                t = seg.strip().strip(',.;')
+                if not t or t.lower() == 'nan':
+                    continue
+                key = t.lower()
+                if key not in seen_lower:
+                    seen_lower.append(key)
+                    unique_phrases.append(t)
+        return '; '.join(unique_phrases[:max_items])
 
     def format_for_display(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """Return a shallow copy of result with compact, readable fields for printing."""
@@ -284,9 +299,39 @@ class ArogyaAI:
         
         other_features = user_df[self.model_components['feature_columns']]
         
-        # Transform symptoms using TF-IDF
+        # Transform symptoms using TF-IDF (apply light normalization & synonym mapping)
+        def _normalize_symptoms_text(text: str) -> str:
+            if not text:
+                return ''
+            t = str(text).lower()
+            # Basic cleanup
+            t = t.replace('\n', ' ').replace('\t', ' ').replace('  ', ' ')
+            # Common synonym mapping to align with training vocabulary
+            synonyms = {
+                'pyrexia': 'fever', 'high temperature': 'fever',
+                'myalgia': 'body ache', 'arthralgia': 'joint pain',
+                'cephalalgia': 'headache', 'rhinorrhea': 'runny nose', 'coryza': 'cold',
+                'dyspnea': 'breathing difficulty', 'shortness of breath': 'breathing difficulty',
+                'emesis': 'vomiting', 'nauseous': 'nausea', 'nasal congestion': 'blocked nose',
+                'pharyngitis': 'sore throat', 'odynophagia': 'sore throat',
+                'diarrhea': 'diarrhoea', # normalize US/UK spelling
+                'tiredness': 'fatigue', 'exhaustion': 'fatigue',
+            }
+            for src, dst in synonyms.items():
+                t = t.replace(src, dst)
+            # Normalize separators and de-dupe tokens while preserving order
+            tokens = [s.strip(' ,.;') for s in t.split(',') if s.strip(' ,.;')]
+            seen = set()
+            normalized = []
+            for tok in tokens:
+                if tok not in seen:
+                    seen.add(tok)
+                    normalized.append(tok)
+            return ', '.join(normalized)
+
         if 'Symptoms' in user_data:
-            tfidf_matrix = self.model_components['vectorizer'].transform([user_data['Symptoms']])
+            normalized_symptoms = _normalize_symptoms_text(user_data['Symptoms'])
+            tfidf_matrix = self.model_components['vectorizer'].transform([normalized_symptoms])
             tfidf_features = pd.DataFrame(
                 tfidf_matrix.toarray(), 
                 columns=[f'tfidf_{i}' for i in range(tfidf_matrix.shape[1])]

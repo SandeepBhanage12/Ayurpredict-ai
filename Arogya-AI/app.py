@@ -8,6 +8,7 @@ import os
 import sys
 import textwrap
 from typing import Dict, Any, List
+from io import BytesIO
 
 import streamlit as st
 
@@ -162,13 +163,28 @@ with left:
                 st.session_state[k] = v
 
     # Inputs
-    _section_title("📝", "Symptoms", "Use comma-separated phrases")
+    _section_title("📝", "Symptoms", "Use comma-separated phrases or pick from list")
+    common_symptoms = [
+        "fever", "body ache", "headache", "fatigue", "cough", "sore throat", "runny nose", "blocked nose",
+        "breathing difficulty", "chest tightness", "nausea", "vomiting", "diarrhoea", "abdominal pain",
+        "joint pain", "back pain", "dizziness", "vertigo", "rash", "itching", "loss of appetite",
+        "chills", "sweating", "weight loss", "anxiety", "insomnia"
+    ]
+    sel = st.multiselect("Pick common symptoms (optional)", options=common_symptoms, default=[])
     symptoms = st.text_area(
         "",
         value=st.session_state.get("Symptoms", ""),
         height=90,
         placeholder="e.g., fever, body ache, headache, fatigue",
     )
+    # Combine multiselect with free text (dedupe, preserve order: free text first)
+    def _merge_symptoms(free_text: str, selected: list) -> str:
+        base = [s.strip(' ,.;') for s in (free_text or '').split(',') if s.strip(' ,.;')]
+        for s in selected:
+            if s not in base:
+                base.append(s)
+        return ', '.join(base)
+    merged_symptoms = _merge_symptoms(symptoms, sel)
 
     _section_title("👤", "Profile")
     c1, c2, c3, c4 = st.columns(4)
@@ -236,7 +252,7 @@ with left:
 
     # Persist state
     for k, v in {
-        "Symptoms": symptoms,
+        "Symptoms": merged_symptoms,
         "Age": age,
         "Height_cm": height_cm,
         "Weight_kg": weight_kg,
@@ -252,7 +268,19 @@ with left:
         st.session_state[k] = v
 
     st.divider()
-    predict_now = st.button("🔮 Predict Now", type="primary")
+    cA, cB = st.columns([0.25, 0.75])
+    with cA:
+        predict_now = st.button("🔮 Predict Now", type="primary")
+    with cB:
+        if st.button("↺ Clear inputs"):
+            for k in [
+                "Symptoms","Age","Height_cm","Weight_kg","Gender","Age_Group",
+                "Body_Type_Dosha_Sanskrit","Food_Habits","Current_Medication","Allergies",
+                "Season","Weather","dosha"
+            ]:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
 
 with right:
     _section_title("📊", "Prediction Results", "Top candidates and confidence")
@@ -296,41 +324,153 @@ with right:
         display = ai.format_for_display(result)
 
         with result_placeholder.container():
-            st.markdown(
-                f"<div style='padding:12px;border:1px solid #E6E8EB;border-radius:12px;background:#FFFFFF'>"
-                f"<div style='font-size:1.1rem;font-weight:700'>Predicted Disease: {display['Predicted_Disease']}</div>"
-                f"<div style='color:#5f6b7a;margin-top:2px'>Confidence: {_format_percent(display['Confidence'])}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+            tabs = st.tabs(["Prediction", "Ayurvedic Plan"])
+            with tabs[0]:
+                st.markdown(
+                    f"<div style='padding:12px;border:1px solid #E6E8EB;border-radius:12px;background:#FFFFFF'>"
+                    f"<div style='font-size:1.1rem;font-weight:700'>Predicted Disease: {display['Predicted_Disease']}</div>"
+                    f"<div style='color:#5f6b7a;margin-top:2px'>Confidence: {_format_percent(display['Confidence'])}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                # Red-flag triage (basic heuristics)
+                red_flags = [
+                    ("chest pain" in merged_symptoms and "sweating" in merged_symptoms),
+                    ("breathing difficulty" in merged_symptoms and "blue lips" in merged_symptoms),
+                    ("severe headache" in merged_symptoms and "stiff neck" in merged_symptoms),
+                ]
+                if any(red_flags):
+                    st.error("Potential red flags detected. Consider seeking urgent medical attention.")
+                if "Top_5_Predictions" in result and result["Top_5_Predictions"]:
+                    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+                    for i, item in enumerate(result["Top_5_Predictions"], start=1):
+                        st.progress(min(0.999, float(item["Confidence"])) , text=f"{i}. {item['Disease']} ({_format_percent(item['Confidence'])})")
+            with tabs[1]:
+                _section_title("🌿", "Ayurvedic Herbs", "Sanskrit and English names")
+                _pill_list(display.get("Ayurvedic_Herbs_Sanskrit", ""))
+                _pill_list(display.get("Ayurvedic_Herbs_English", ""))
 
-            if "Top_5_Predictions" in result and result["Top_5_Predictions"]:
-                st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-                for i, item in enumerate(result["Top_5_Predictions"], start=1):
-                    st.progress(min(0.999, float(item["Confidence"])) , text=f"{i}. {item['Disease']} ({_format_percent(item['Confidence'])})")
+                _section_title("✨", "Herb Effects")
+                st.write(display.get("Herbs_Effects", ""))
 
-            _section_title("🌿", "Ayurvedic Herbs", "Sanskrit and English names")
-            _pill_list(display.get("Ayurvedic_Herbs_Sanskrit", ""))
-            _pill_list(display.get("Ayurvedic_Herbs_English", ""))
+                _section_title("💆", "Therapies")
+                _pill_list(display.get("Ayurvedic_Therapies_Sanskrit", ""))
+                _pill_list(display.get("Ayurvedic_Therapies_English", ""))
 
-            _section_title("✨", "Herb Effects")
-            st.write(display.get("Herbs_Effects", ""))
+                _section_title("🧪", "Therapy Effects")
+                st.write(display.get("Therapies_Effects", ""))
 
-            _section_title("💆", "Therapies")
-            _pill_list(display.get("Ayurvedic_Therapies_Sanskrit", ""))
-            _pill_list(display.get("Ayurvedic_Therapies_English", ""))
+                _section_title("🥗", "Dietary Recommendations")
+                st.write(display.get("Dietary_Recommendations", ""))
 
-            _section_title("🧪", "Therapy Effects")
-            st.write(display.get("Therapies_Effects", ""))
+                _section_title("👤", "Personalized Effects")
+                st.info(display.get("How_Treatment_Affects_Your_Body_Type", ""))
+                # Download results
+                _section_title("⬇️", "Download Results")
+                import json as _json
+                dl_obj = {
+                    "prediction": display,
+                    "top5": result.get("Top_5_Predictions", []),
+                }
+                st.download_button("Download JSON", data=_json.dumps(dl_obj, indent=2), file_name="arogya_result.json")
 
-            _section_title("🥗", "Dietary Recommendations")
-            st.write(display.get("Dietary_Recommendations", ""))
+                # PDF export (ReportLab)
+                def _build_pdf_bytes(pred: Dict[str, Any], top5_list: List[Dict[str, Any]]) -> bytes:
+                    from reportlab.lib.pagesizes import A4
+                    from reportlab.lib.units import mm
+                    from reportlab.pdfgen import canvas
+                    from reportlab.lib.styles import getSampleStyleSheet
+                    from reportlab.lib import colors
 
-            _section_title("👤", "Personalized Effects")
-            st.info(display.get("How_Treatment_Affects_Your_Body_Type", ""))
+                    buffer = BytesIO()
+                    c = canvas.Canvas(buffer, pagesize=A4)
+                    width, height = A4
 
-    # Auto-update on change if symptoms entered; also respond to button
-    if predict_now or st.session_state.get("Symptoms", "").strip():
+                    left = 20 * mm
+                    right = width - 20 * mm
+                    top = height - 20 * mm
+                    y = top
+
+                    def header(text: str):
+                        nonlocal y
+                        c.setFont("Helvetica-Bold", 16)
+                        c.drawString(left, y, text)
+                        y -= 10
+                        c.setStrokeColor(colors.HexColor('#E0E0E0'))
+                        c.line(left, y, right, y)
+                        y -= 10
+
+                    def subheader(text: str):
+                        nonlocal y
+                        c.setFont("Helvetica-Bold", 12)
+                        c.drawString(left, y, text)
+                        y -= 14
+
+                    def para(text: str, font_size: int = 10):
+                        nonlocal y
+                        c.setFont("Helvetica", font_size)
+                        wrap_width = int((right - left) / (font_size * 0.5))
+                        for line in textwrap.wrap(text or "", width=wrap_width):
+                            if y < 30 * mm:
+                                c.showPage(); y = top
+                            c.drawString(left, y, line)
+                            y -= (font_size + 2)
+                        y -= 4
+
+                    header("Arogya AI - Prediction Report")
+                    subheader("Summary")
+                    para(f"Predicted Disease: {pred.get('Predicted_Disease','-')}")
+                    para(f"Confidence: {_format_percent(pred.get('Confidence', 0))}")
+                    para(f"Body Type (Dosha): {pred.get('User_Body_Type','-')}")
+                    para(f"Symptoms: {pred.get('User_Symptoms','-')}")
+
+                    if top5_list:
+                        subheader("Top-5 Candidates")
+                        for i, item in enumerate(top5_list, 1):
+                            para(f"{i}. {item.get('Disease','-')} ({_format_percent(item.get('Confidence',0))})")
+
+                    subheader("Ayurvedic Herbs (Sanskrit)")
+                    para(pred.get('Ayurvedic_Herbs_Sanskrit',''))
+                    subheader("Ayurvedic Herbs (English)")
+                    para(pred.get('Ayurvedic_Herbs_English',''))
+                    subheader("Herb Effects")
+                    para(pred.get('Herbs_Effects',''))
+
+                    subheader("Therapies (Sanskrit)")
+                    para(pred.get('Ayurvedic_Therapies_Sanskrit',''))
+                    subheader("Therapies (English)")
+                    para(pred.get('Ayurvedic_Therapies_English',''))
+                    subheader("Therapy Effects")
+                    para(pred.get('Therapies_Effects',''))
+
+                    subheader("Dietary Recommendations")
+                    para(pred.get('Dietary_Recommendations',''))
+
+                    subheader("Personalized Effects")
+                    para(pred.get('How_Treatment_Affects_Your_Body_Type',''))
+
+                    c.showPage()
+                    c.save()
+                    buffer.seek(0)
+                    return buffer.read()
+
+                pdf_bytes = _build_pdf_bytes(display, result.get("Top_5_Predictions", []))
+                st.download_button("Download PDF", data=pdf_bytes, file_name="arogya_result.pdf", mime="application/pdf")
+
+                # Save to local Downloads folder on the server (works when running locally)
+                if st.button("Save PDF to Downloads folder"):
+                    try:
+                        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+                        os.makedirs(downloads_dir, exist_ok=True)
+                        out_path = os.path.join(downloads_dir, "arogya_result.pdf")
+                        with open(out_path, "wb") as f:
+                            f.write(pdf_bytes)
+                        st.success(f"Saved to: {out_path}")
+                    except Exception as e:
+                        st.error(f"Failed to save PDF: {e}")
+
+    # Predict only on button click
+    if predict_now:
         _predict_and_render()
 
 st.markdown(
