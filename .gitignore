@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter/Notebook
+.ipynb_checkpoints/
+
+# Streamlit cache
+.streamlit/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Model artifacts and large data
+Arogya-AI/random_forest_model.pkl
+*.pkl
+*.joblib
+
+# Optional: large datasets (uncomment to exclude)
+# Arogya-AI/enhanced_ayurvedic_treatment_dataset.csv
+
+

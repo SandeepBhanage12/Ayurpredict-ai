@@ -47,6 +47,15 @@ This creates `random_forest_model.pkl` with all necessary components.
 python arogya_predict.py
 ```
 
+### 5. Run the Web Frontend (Streamlit)
+For a real-time interactive UI with top-5 predictions and Ayurvedic plan:
+```bash
+cd Arogya-AI
+pip install -r requirements.txt
+streamlit run app.py
+```
+Ensure `random_forest_model.pkl` and `enhanced_ayurvedic_treatment_dataset.csv` are present in `Arogya-AI`.
+
 ### 4. Interactive Mode
 For personalized assessment, run the script and choose interactive mode when prompted:
 ```bash
