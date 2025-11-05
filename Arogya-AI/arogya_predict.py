@@ -304,6 +304,8 @@ class ArogyaAI:
             if not text:
                 return ''
             t = str(text).lower()
+            # Align with training cleanup: underscores -> spaces
+            t = t.replace('_', ' ')
             # Basic cleanup
             t = t.replace('\n', ' ').replace('\t', ' ').replace('  ', ' ')
             # Common synonym mapping to align with training vocabulary

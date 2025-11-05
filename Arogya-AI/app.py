@@ -51,20 +51,20 @@ def _section_title(emoji: str, title: str, subtitle: str = "") -> None:
 
 
 def _dosha_cards(default: str = "Pitta") -> str:
-    st.write("Select your Ayurvedic constitution (Dosha):")
+    st.write("Select your Ayurvedic constitution (Dosha) — options: Vata, Pitta, Kapha, Vata-Pitta, Vata-Kapha, Pitta-Kapha.")
     doshas = [
-        ("Vata", "Air_Space_Constitution", "Thin/Lean", "Naturally thin build, dry skin, cold hands/feet"),
-        ("Pitta", "Fire_Water_Constitution", "Medium", "Warm body, strong appetite, good muscle tone"),
-        ("Kapha", "Earth_Water_Constitution", "Heavy/Large", "Larger build, steady energy, cool moist skin"),
-        ("Vata-Pitta", "Air_Fire_Mixed_Constitution", "Thin to Medium", "Variable build, creative energy"),
-        ("Vata-Kapha", "Air_Earth_Mixed_Constitution", "Thin to Heavy", "Irregular patterns, sensitive to changes"),
-        ("Pitta-Kapha", "Fire_Earth_Mixed_Constitution", "Medium to Heavy", "Strong stable build, balanced metabolism"),
+        ("Vata", "Thin/Lean", "Naturally thin build, dry skin, cold hands/feet"),
+        ("Pitta", "Medium", "Warm body, strong appetite, good muscle tone"),
+        ("Kapha", "Heavy/Large", "Larger build, steady energy, cool moist skin"),
+        ("Vata-Pitta", "Thin to Medium", "Variable build, creative energy"),
+        ("Vata-Kapha", "Thin to Heavy", "Irregular patterns, sensitive to changes"),
+        ("Pitta-Kapha", "Medium to Heavy", "Strong stable build, balanced metabolism"),
     ]
 
     selected = st.session_state.get("dosha", default)
     cols = st.columns(3)
 
-    for i, (name, _const, body, desc) in enumerate(doshas):
+    for i, (name, body, desc) in enumerate(doshas):
         with cols[i % 3]:
             is_active = selected == name
             bg = "#FFF7E8" if is_active else "#FFFFFF"
@@ -78,10 +78,11 @@ def _dosha_cards(default: str = "Pitta") -> str:
                 f"</div>",
                 unsafe_allow_html=True,
             )
-            if st.button("Select", key=f"dosha_{name}"):
+            if st.button(f"Select {name}", key=f"dosha_{name}"):
                 selected = name
 
     st.session_state["dosha"] = selected
+    st.caption(f"Selected Dosha: {selected}. Click 'Select' on a card to change.")
     return selected
 
 
@@ -165,10 +166,20 @@ with left:
     # Inputs
     _section_title("📝", "Symptoms", "Use comma-separated phrases or pick from list")
     common_symptoms = [
-        "fever", "body ache", "headache", "fatigue", "cough", "sore throat", "runny nose", "blocked nose",
-        "breathing difficulty", "chest tightness", "nausea", "vomiting", "diarrhoea", "abdominal pain",
-        "joint pain", "back pain", "dizziness", "vertigo", "rash", "itching", "loss of appetite",
-        "chills", "sweating", "weight loss", "anxiety", "insomnia"
+        "abdominal_pain", "abdominal_swelling", "back_pain", "blackheads", "bleeding",
+        "blurred_and_distorted_vision", "bloody_stool", "burning_micturition", "chest_pain",
+        "chest_tightness", "chills", "cough", "congestion", "constipation", "continuous_sneezing",
+        "coughing", "dark_urine", "diarrhoea", "difficulty_breathing", "distention_of_abdomen",
+        "excessive_hunger", "extra_marital_contacts", "fatigue", "fast_heart_rate", "fluid_overload",
+        "headache", "high_fever", "history_of_alcohol_consumption", "itching", "joint_pain",
+        "lethargy", "loss_of_appetite", "loss_of_balance", "loss_of_coordination", "loss_of_smell",
+        "malaise", "mild_fever", "muscle_pain", "muscle_wasting", "nausea", "obesity",
+        "pain_behind_the_eyes", "patches_in_throat", "phlegm", "polyuria", "pus_filled_pimples",
+        "rapid_heartbeat", "red_spots_over_body", "redness_of_eyes", "runny_nose", "rusty_sputum",
+        "scurring", "shortness_of_breath", "sinus_pressure", "skin_rash", "spinning_movements",
+        "spotting_urination", "stomach_pain", "sudden_numbness", "sweating", "swelled_lymph_nodes",
+        "swelling_of_stomach", "toxic_look_(typhos)", "unsteadiness", "vomiting", "weight_gain",
+        "weight_loss", "wheezing", "yellowing_of_eyes", "yellowish_skin"
     ]
     sel = st.multiselect("Pick common symptoms (optional)", options=common_symptoms, default=[])
     symptoms = st.text_area(
@@ -185,6 +196,8 @@ with left:
                 base.append(s)
         return ', '.join(base)
     merged_symptoms = _merge_symptoms(symptoms, sel)
+    # Show how symptoms will be processed (underscores -> spaces)
+    st.caption(f"Processed symptoms: {merged_symptoms.replace('_',' ')}")
 
     _section_title("👤", "Profile")
     c1, c2, c3, c4 = st.columns(4)
@@ -219,7 +232,7 @@ with left:
         help="Auto-selected based on age; you can override",
     )
 
-    _section_title("🌿", "Dosha (Ayurvedic Constitution)")
+    _section_title("🌿", "Dosha (Ayurvedic Constitution)", "Choose one: Vata, Pitta, Kapha, Vata-Pitta, Vata-Kapha, Pitta-Kapha")
     body_type_dosha = _dosha_cards(default=st.session_state.get("Body_Type_Dosha_Sanskrit", "Pitta"))
 
     _section_title("🍽️", "Lifestyle & Context")
@@ -333,14 +346,15 @@ with right:
                     f"</div>",
                     unsafe_allow_html=True,
                 )
-                # Red-flag triage (basic heuristics)
+                # Red-flag triage (basic heuristics) - handle both underscore and space formats
+                symptoms_lower = merged_symptoms.lower()
                 red_flags = [
-                    ("chest pain" in merged_symptoms and "sweating" in merged_symptoms),
-                    ("breathing difficulty" in merged_symptoms and "blue lips" in merged_symptoms),
-                    ("severe headache" in merged_symptoms and "stiff neck" in merged_symptoms),
+                    (("chest_pain" in symptoms_lower or "chest pain" in symptoms_lower) and "sweating" in symptoms_lower),
+                    (("difficulty_breathing" in symptoms_lower or "breathing difficulty" in symptoms_lower or "shortness_of_breath" in symptoms_lower or "shortness of breath" in symptoms_lower) and "rapid_heartbeat" in symptoms_lower),
+                    (("headache" in symptoms_lower) and ("sudden_numbness" in symptoms_lower or "loss_of_coordination" in symptoms_lower)),
                 ]
                 if any(red_flags):
-                    st.error("Potential red flags detected. Consider seeking urgent medical attention.")
+                    st.error("⚠️ Potential red flags detected. Consider seeking urgent medical attention.")
                 if "Top_5_Predictions" in result and result["Top_5_Predictions"]:
                     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
                     for i, item in enumerate(result["Top_5_Predictions"], start=1):
@@ -367,12 +381,6 @@ with right:
                 st.info(display.get("How_Treatment_Affects_Your_Body_Type", ""))
                 # Download results
                 _section_title("⬇️", "Download Results")
-                import json as _json
-                dl_obj = {
-                    "prediction": display,
-                    "top5": result.get("Top_5_Predictions", []),
-                }
-                st.download_button("Download JSON", data=_json.dumps(dl_obj, indent=2), file_name="arogya_result.json")
 
                 # PDF export (ReportLab)
                 def _build_pdf_bytes(pred: Dict[str, Any], top5_list: List[Dict[str, Any]]) -> bytes:
@@ -456,18 +464,6 @@ with right:
 
                 pdf_bytes = _build_pdf_bytes(display, result.get("Top_5_Predictions", []))
                 st.download_button("Download PDF", data=pdf_bytes, file_name="arogya_result.pdf", mime="application/pdf")
-
-                # Save to local Downloads folder on the server (works when running locally)
-                if st.button("Save PDF to Downloads folder"):
-                    try:
-                        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-                        os.makedirs(downloads_dir, exist_ok=True)
-                        out_path = os.path.join(downloads_dir, "arogya_result.pdf")
-                        with open(out_path, "wb") as f:
-                            f.write(pdf_bytes)
-                        st.success(f"Saved to: {out_path}")
-                    except Exception as e:
-                        st.error(f"Failed to save PDF: {e}")
 
     # Predict only on button click
     if predict_now:
